@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - lib: Remove explicit entropy feature and make it the default
 - lib: Undeprecate direct access to Transit connections and unify the connection functions. `TransitConnector::connect` is now the only way to set up the connection, and accepts a `TransitRole` enum rather than an `is_leader` boolean. `leader_connect` and `follower_connect` are removed from the API.
+- lib: `MailboxConnection` no longer carries a `Code` with it.
+    - `MailboxConnection::code` is removed, and instead constructor functions return a `(MailboxConnection, Code)` tuple on success (with the exception of the function that explicitly takes a `Code` as an argument).
+    - `Wormhole::connect` requires the `Code` to be explicitly provided.
 
 ### Added
 

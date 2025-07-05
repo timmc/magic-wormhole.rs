@@ -101,8 +101,6 @@ pub struct MailboxConnection<V: serde::Serialize + Send + Sync + 'static> {
     welcome: Option<String>,
     /// The mailbox id of the created mailbox
     mailbox: Mailbox,
-    /// The Code which is required to connect to the mailbox.
-    code: Code,
 }
 
 impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
@@ -119,10 +117,13 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, AppConfig, MailboxConnection};
     /// let config = APP_CONFIG;
-    /// let mailbox_connection = MailboxConnection::create(config, 2).await?;
+    /// let (code, mailbox_connection) = MailboxConnection::create(config, 2).await?;
     /// # Ok(()) })}
     /// ```
-    pub async fn create(config: AppConfig<V>, code_length: usize) -> Result<Self, WormholeError> {
+    pub async fn create(
+        config: AppConfig<V>,
+        code_length: usize,
+    ) -> Result<(Code, Self), WormholeError> {
         Self::create_with_validated_password(
             config,
             Wordlist::default_wordlist(code_length).choose_words(),
@@ -145,7 +146,7 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     /// # fn main() -> eyre::Result<()> { async_std::task::block_on(async {
     /// use magic_wormhole::{transfer::APP_CONFIG, MailboxConnection};
     /// let config = APP_CONFIG;
-    /// let mailbox_connection =
+    /// let (code, mailbox_connection) =
     ///     MailboxConnection::create_with_password(config, "secret".parse()?).await?;
     /// # Ok(()) })}
     /// # }
@@ -155,32 +156,36 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     pub async fn create_with_password(
         config: AppConfig<V>,
         password: Password,
-    ) -> Result<Self, WormholeError> {
+    ) -> Result<(Code, Self), WormholeError> {
         Self::create_with_validated_password(config, password).await
     }
 
-    /// Create a connection to a mailbox which is configured with a `Code` containing the nameplate and the given password.
+    /// Create a connection to a mailbox which is configured with the given password.
     ///
     /// # Arguments
     ///
     /// * `config`: Application configuration
     /// * `password`: Free text password which will be appended to the nameplate number to form the `Code`
+    ///
+    /// Returns a mailbox connection and the Code that corresponds to it.
     async fn create_with_validated_password(
         config: AppConfig<V>,
         password: Password,
-    ) -> Result<Self, WormholeError> {
+    ) -> Result<(Code, Self), WormholeError> {
         let (mut server, welcome) =
             RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
         let (nameplate, mailbox) = server.allocate_claim_open().await?;
         let code = Code::from_components(nameplate, password);
 
-        Ok(MailboxConnection {
-            config,
-            server,
-            mailbox,
+        Ok((
             code,
-            welcome,
-        })
+            MailboxConnection {
+                config,
+                server,
+                mailbox,
+                welcome,
+            },
+        ))
     }
 
     /// Create a connection to a mailbox defined by a `Code` which contains the `Nameplate` and the password to authorize the access.
@@ -227,7 +232,6 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
             config,
             server,
             mailbox,
-            code,
             welcome,
         })
     }
@@ -270,11 +274,6 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
     pub fn mailbox(&self) -> &Mailbox {
         &self.mailbox
     }
-
-    /// The Code that was used to connect to the mailbox.
-    pub fn code(&self) -> &Code {
-        &self.code
-    }
 }
 
 /// A wormhole is an open connection to a peer via the rendezvous server.
@@ -300,12 +299,12 @@ impl Wormhole {
     /// The MailboxConnection already contains a rendezvous server with an opened mailbox.
     pub async fn connect(
         mailbox_connection: MailboxConnection<impl serde::Serialize + Send + Sync + 'static>,
+        code: &Code,
     ) -> Result<Self, WormholeError> {
         let MailboxConnection {
             config,
             mut server,
             mailbox: _mailbox,
-            code,
             welcome: _welcome,
         } = mailbox_connection;
 

@@ -676,7 +676,7 @@ async fn parse_and_connect(
         uri_rendezvous = Some(rendezvous_server.clone());
         app_config = app_config.rendezvous_url(rendezvous_server.to_string().into());
     }
-    let mailbox_connection = match code {
+    let (code, mailbox_connection) = match code {
         Some(code) => {
             if is_send {
                 print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
@@ -686,10 +686,13 @@ async fn parse_and_connect(
                     no_qr,
                 )?;
             }
-            MailboxConnection::connect(app_config, code, true).await?
+            (
+                code.clone(),
+                MailboxConnection::connect(app_config, code, true).await?,
+            )
         },
         None => {
-            let mailbox_connection =
+            let (code, mailbox_connection) =
                 MailboxConnection::create(app_config, code_length.unwrap()).await?;
 
             /* Print code and also copy it to clipboard */
@@ -703,7 +706,7 @@ async fn parse_and_connect(
                         .ok();
 
                     if let Some(mut clipboard) = clipboard {
-                        match clipboard.set_text(mailbox_connection.code().to_string()) {
+                        match clipboard.set_text(code.to_string()) {
                             Ok(()) => tracing::info!("Code copied to clipboard"),
                             Err(err) => tracing::warn!("Failed to copy code to clipboard: {}", err),
                         }
@@ -712,17 +715,16 @@ async fn parse_and_connect(
 
                 print_code.expect("`print_code` must be `Some` when `is_send` is `true`")(
                     term,
-                    mailbox_connection.code(),
+                    &code,
                     &uri_rendezvous,
                     no_qr,
                 )?;
             }
-            mailbox_connection
+            (code, mailbox_connection)
         },
     };
     print_welcome(term, mailbox_connection.welcome())?;
-    let code = mailbox_connection.code().clone();
-    let wormhole = Wormhole::connect(mailbox_connection).await?;
+    let wormhole = Wormhole::connect(mailbox_connection, &code).await?;
     eyre::Result::<_>::Ok((wormhole, code, relay_hints))
 }
 
@@ -961,6 +963,7 @@ async fn send_many(
 
         let wormhole = Wormhole::connect(
             MailboxConnection::connect(transfer::APP_CONFIG, code.clone(), false).await?,
+            code,
         )
         .await?;
 
