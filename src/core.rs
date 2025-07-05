@@ -232,6 +232,30 @@ impl<V: serde::Serialize + Send + Sync + 'static> MailboxConnection<V> {
         })
     }
 
+    /// Connect directly to a specified mailbox without allocating a nameplate.
+    ///
+    /// This should only be used by applications with specialized
+    /// needs. Even applications that deterministically derive
+    /// connection parameters from a shared secret should probably
+    /// generate a Code, not a Mailbox directly.
+    pub async fn connect_chosen_mailbox(
+        config: AppConfig<V>,
+        mailbox: Mailbox,
+        code: Code,
+    ) -> Result<Self, WormholeError> {
+        let (mut server, welcome) =
+            RendezvousServer::connect(&config.id, &config.rendezvous_url).await?;
+        server.open_mailbox(&mailbox).await?;
+
+        Ok(MailboxConnection {
+            config,
+            server,
+            welcome,
+            mailbox,
+            code,
+        })
+    }
+
     /// Shut down the connection to the mailbox
     ///
     /// # Arguments
@@ -687,12 +711,12 @@ impl AsRef<str> for Phase {
     }
 }
 
+/// The Mailbox that a wormhole connection is operating over.
+///
+/// Most applications will have no use for direct access to a Mailbox
+/// object and should use Codes instead.
 #[derive(PartialEq, Eq, Clone, Debug, Deserialize, Serialize, derive_more::Display)]
 #[serde(transparent)]
-#[deprecated(
-    since = "0.7.0",
-    note = "This will be a private type in the future. Open an issue if you require access to protocol intrinsics in the future"
-)]
 pub struct Mailbox(pub String);
 
 /// An error occurred when parsing a nameplate: Nameplate is not a number.

@@ -534,6 +534,25 @@ impl RendezvousServer {
         Ok(mailbox)
     }
 
+    /// Claim a mailbox (without a nameplate) and open it.
+    pub async fn open_mailbox(&mut self, mailbox: &Mailbox) -> Result<(), RendezvousError> {
+        assert!(
+            self.state.is_none(),
+            "Can only call in initial state, and only once"
+        );
+
+        self.send_message(&OutboundMessage::open(mailbox.clone()))
+            .await?;
+
+        self.state = Some(MailboxMachine {
+            nameplate: None,
+            mailbox: mailbox.clone(),
+            queue: Default::default(),
+            processed: Default::default(),
+        });
+        Ok(())
+    }
+
     pub fn needs_nameplate_release(&self) -> bool {
         self.state
             .as_ref()
